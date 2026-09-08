@@ -2,7 +2,6 @@
 
 #include <cstddef>         // size_t
 #include <cstdint>         // uint16_t
-#include <spdlog/spdlog.h> // spdlog::debug, spdlog::trace
 #include <unordered_map>   // std::unordered_map
 #include <vector>          // std::vector
 

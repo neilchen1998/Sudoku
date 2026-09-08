@@ -4,7 +4,7 @@
 #include <cstdint>         // uint16_t
 #include <mdspan>          // std::mdspan
 #include <optional>        // std::optional
-#include <spdlog/spdlog.h> // spdlog::debug, spdlog::trace
+// #include <spdlog/spdlog.h> // spdlog::debug, spdlog::trace
 #include <vector>          // std::vector
 
 #include "board/boardlib.hpp"    // Point, SudokuBoard
@@ -38,7 +38,7 @@ void SumokuMRVSolver::Solve()
 {
     if (!solved_)
     {
-        spdlog::debug("GetSolution() called but solver has no solution");
+        // spdlog::debug("GetSolution() called but solver has no solution");
         return std::nullopt;
     }
 
@@ -88,9 +88,9 @@ Selection SumokuMRVSolver::FindNextBestCell()
                 // Early return if there is only a single candidate based on the box
                 if (curNumOfCandidates == 1)
                 {
-                    spdlog::debug("MRV selected cell=({}, {}) due to single sum candidate, "
-                                  "mask=0x{:04x}",
-                                  r, c, candidates);
+                    // spdlog::debug("MRV selected cell=({}, {}) due to single sum candidate, "
+                                  // "mask=0x{:04x}",
+                                  // r, c, candidates);
 
                     return {.r = r, .c = c, .mask = candidates};
                 }
@@ -98,9 +98,9 @@ Selection SumokuMRVSolver::FindNextBestCell()
                 // If there is no candidate available that means we hit a dead end and this tree needs to be pruned
                 if (candidates == 0) [[unlikely]]
                 {
-                    spdlog::debug("MRV dead end at cell=({}, {}), box={}, "
-                                  "remainingSum={}, remainingCells={}",
-                                  r, c, id, boxRemainingSum_[id], boxRemainingCells_[id]);
+                    // spdlog::debug("MRV dead end at cell=({}, {}), box={}, "
+                                  // "remainingSum={}, remainingCells={}",
+                                  // r, c, id, boxRemainingSum_[id], boxRemainingCells_[id]);
 
                     return Selection {.deadEnd = true};
                 }
@@ -113,9 +113,9 @@ Selection SumokuMRVSolver::FindNextBestCell()
                     ret.c = c;
                     ret.mask = candidates;
 
-                    spdlog::debug("MRV new best: cell=({}, {}), box={}, candidates=0x{:04x}, "
-                                  "count={}",
-                                  r, c, id, candidates, curNumOfCandidates);
+                    // spdlog::debug("MRV new best: cell=({}, {}), box={}, candidates=0x{:04x}, "
+                                  // "count={}",
+                                  // r, c, id, candidates, curNumOfCandidates);
 
                     // If there is only one candidate then we return the current value early
                     if (curNumOfCandidates == 1)
@@ -129,7 +129,7 @@ Selection SumokuMRVSolver::FindNextBestCell()
 
     if (ret.r == std::numeric_limits<size_t>::max())
     {
-        spdlog::debug("MRV found no empty cells");
+        // spdlog::debug("MRV found no empty cells");
     }
 
     return ret;
@@ -142,7 +142,7 @@ bool SumokuMRVSolver::Backtrack(size_t depth)
     // If the next best cell is illegal, that means backtracking fails
     if (next.deadEnd)
     {
-        spdlog::debug("Backtrack: dead end at depth={}, returning false", depth);
+        // spdlog::debug("Backtrack: dead end at depth={}, returning false", depth);
 
         return false;
     }
@@ -150,11 +150,11 @@ bool SumokuMRVSolver::Backtrack(size_t depth)
     // If there is no next best cell and we are not hitting a dead end that means we have finished the entire board
     if (next.r == std::numeric_limits<size_t>::max() && next.c == std::numeric_limits<size_t>::max())
     {
-        spdlog::debug("Backtrack: solution found at depth={}", depth);
+        // spdlog::debug("Backtrack: solution found at depth={}", depth);
         return true;
     }
 
-    spdlog::debug("Backtrack: depth={}, selected cell=({}, {}), mask=0x{:04x}", depth, next.r, next.c, next.mask);
+    // spdlog::debug("Backtrack: depth={}, selected cell=({}, {}), mask=0x{:04x}", depth, next.r, next.c, next.mask);
 
     // Loop from number 1 to N
     for (size_t digit = 1; digit <= N_; ++digit)
@@ -166,7 +166,7 @@ bool SumokuMRVSolver::Backtrack(size_t depth)
             Place(next.r, next.c, digit);
             if (Backtrack(depth + 1))
             {
-                spdlog::debug("Backtrack: depth={}, digit {} at cell=({}, {}) succeeded", depth, digit, next.r, next.c);
+                // spdlog::debug("Backtrack: depth={}, digit {} at cell=({}, {}) succeeded", depth, digit, next.r, next.c);
 
                 return true;
             }
@@ -177,7 +177,7 @@ bool SumokuMRVSolver::Backtrack(size_t depth)
         }
     }
 
-    spdlog::debug("Backtrack: all candidates exhausted at depth={}", depth);
+    // spdlog::debug("Backtrack: all candidates exhausted at depth={}", depth);
 
     return false;
 }
