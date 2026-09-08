@@ -6,7 +6,6 @@
 #include <limits>          // std::numeric_limits<size_t>::max
 #include <mdspan>          // std::mdspan
 #include <optional>        // std::optional
-#include <spdlog/spdlog.h> // spdlog::debug, spdlog::trace
 #include <vector>          // std::vector
 
 #include "board/boardlib.hpp" // Point, SudokuBoard

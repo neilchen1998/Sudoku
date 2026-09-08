@@ -1,6 +1,7 @@
 #include <CLI/CLI.hpp>     // CLI::App, CLI::ParseError
 #include <array>           // std::array
-#include <chrono>          // std::chrono::high_resolution_clock
+#include <chrono>          // std::chrono::steady_clock
+#include <concepts>        // concept
 #include <cstdint>         // std::uint8_t
 #include <cstdlib>         // EXIT_SUCCESS, EXIT_FAILURE
 #include <filesystem>      // std::filesystem
@@ -12,12 +13,12 @@
 #include <string_view>     // std::string_view
 #include <vector>          // std::vector
 
-#include "board/boardlib.hpp"   // PrintBoard
-#include "loader/loaderlib.hpp" // LoadAllPuzzles, LoadPuzzle
-#include "solvers/sumoku/sumokubacktrackingsolver.hpp" // sumoku::SumokuBacktracking
+#include "board/boardlib.hpp"                             // PrintBoard
+#include "loader/loaderlib.hpp"                           // LoadAllPuzzles, LoadPuzzle
+#include "solvers/sumoku/sumokubacktrackingsolver.hpp"    // sumoku::SumokuBacktracking
 #include "solvers/sumoku/sumokubitmaskorderingsolver.hpp" // sumoku::SumokuBacktracking
-#include "solvers/sumoku/sumokuorderingsolver.hpp" // sumoku::SumokuBacktracking
-#include "version.h"            // SUMOKUBOT_PROJECT_NAME, SUMOKUBOT_PROJECT_VERSION
+#include "solvers/sumoku/sumokuorderingsolver.hpp"        // sumoku::SumokuBacktracking
+#include "version.h"                                      // SUMOKUBOT_PROJECT_NAME, SUMOKUBOT_PROJECT_VERSION
 
 namespace fs = std::filesystem;
 
@@ -53,36 +54,95 @@ std::ostream& operator<<(std::ostream& os, const SolverType& s)
     return os << "Unknown";
 }
 
-/// @brief Solves a puzzle and prints the result
-/// @tparam T The solver type
-/// @param s The solver instance
-/// @param puzzle The puzzle data
-/// @param benchmark True if the user wants to print the timing info
-template <typename T> void RunSolver(T& s, const SumokuPuzzleData& puzzle, bool benchmark)
+/// @brief Solves a puzzle and times it.
+/// @tparam Solver The solver type.
+/// @param solver The solver instance.
+/// @return The elapsed duration.
+template <typename T>
+std::chrono::duration<double, std::milli> RunSolver(T& solver)
 {
-    auto start = std::chrono::high_resolution_clock::now();
-    s.Solve();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::milli> elapsed = (end - start);
+    auto start = std::chrono::steady_clock::now();
+    solver.Solve();
+    auto end = std::chrono::steady_clock::now();
 
-    if (auto board = s.GetSolution())
+    return (end - start);
+}
+
+/// @brief Prints the solution for a puzzle.
+/// @tparam T The solver type.
+/// @param solver The solver instance.
+/// @param puzzle The puzzle data.
+/// @return True if a solution was found, otherwise false.
+template <typename T>
+bool PrintSolution(T& solver, const SumokuPuzzleData& puzzle)
+{
+    if (auto board = solver.GetSolution())
     {
         fmt::println("*** Result of Puzzle #{} ***", puzzle.label);
         fmt::println("");
         PrintBoard(*board);
+        fmt::println("");
+        return true;
     }
-    else
+
+    fmt::println("Failed to solve!");
+    return false;
+}
+
+/// @brief Solves a puzzle and optionally prints the elapsed time.
+/// @tparam T The solver type.
+/// @param solver The solver instance.
+/// @param puzzle The puzzle data.
+/// @param benchmark Whether to print the solve duration.
+/// @return True if the puzzle was solved, otherwise false.
+template <typename T>
+bool SolvePuzzle(T& solver, const SumokuPuzzleData& puzzle, bool benchmark)
+{
+    const std::chrono::duration<double, std::milli> elapsed = RunSolver(solver);
+
+    if (!PrintSolution(solver, puzzle))
     {
-        fmt::println("Failed to solve!");
-        return;
+        return false;
     }
 
     if (benchmark)
     {
         fmt::println("Solved in: {:.3f} ms", elapsed.count());
+        fmt::println("");
     }
 
-    fmt::println("");
+    return true;
+}
+
+/// @brief Defines the types supported as puzzle solvers.
+/// @tparam T The type to test as a puzzle solver.
+/// @concept PuzzleSolver
+/// @details A type satisfies this concept if it supports both Solve and GetSolution functions.
+template <typename T>
+concept PuzzleSolver = requires(T solver) {
+    solver.Solve();
+    solver.GetSolution();
+};
+
+/// @brief Defines the types supported as Sumoku solvers.
+/// @tparam T The type to test as a Sumoku solver.
+/// @concept SumokuSolver
+/// @details A type satisfies this concept if it is one of the supported Sumoku solver implementations.
+template <typename T>
+concept SumokuSolver =
+    std::same_as<T, sumoku::SumokuBacktrackingSolver> || std::same_as<T, sumoku::SumokuMRVSolver> || std::same_as<T, sumoku::SumokuOrderingSolver>;
+
+/// @brief Constructs a solver and solves a puzzle.
+/// @tparam T The solver type.
+/// @param puzzle The puzzle data.
+/// @param benchmark Whether to print the solve duration.
+/// @return True if the puzzle was solved, otherwise false.
+template <SumokuSolver T>
+requires SumokuSolver<T>
+bool SolveWith(const SumokuPuzzleData& p, bool benchmark)
+{
+    T solver {p.N, p.boxes, p.sums};
+    return SolvePuzzle(solver, p, benchmark);
 }
 
 int main(int argc, char* argv[])
@@ -144,13 +204,23 @@ int main(int argc, char* argv[])
         {
             spdlog::debug("Puzzle file selected: '{}'", filePath.string());
 
-            if (verbose)
+            std::error_code ec;
+            const auto size = fs::file_size(filePath, ec);
+
+            if (ec)
+            {
+                fmt::println(stderr, "Unable to determine file size: {}", ec.message());
+            }
+
+            spdlog::debug("File size: {} bytes.", size);
+
+            if (verbose && !ec)
             {
                 fmt::println("Loading puzzle from: '{}'.", filePath);
-                fmt::println("File size: {} bytes.", fs::file_size(filePath));
+                fmt::println("File size: {} bytes.", size);
             }
         }
-        else if (!dirPath.empty())
+        else
         {
             spdlog::debug("Puzzle directory selected: '{}'", dirPath.string());
 
@@ -213,33 +283,35 @@ int main(int argc, char* argv[])
     for (const auto& p : puzzles)
     {
         spdlog::debug("Solving puzzle with N = {}", p.N);
-        switch (solverType)
+        const auto solved = [&] {
+            switch (solverType)
+            {
+            case SolverType::SumokuSolver:
+            {
+                spdlog::debug("Using SumokuSolver");
+                return SolveWith<sumoku::SumokuBacktrackingSolver>(p, benchmark);
+            }
+            case SolverType::SumokuMRV:
+            {
+                spdlog::debug("Using SumokuMRV");
+                return SolveWith<sumoku::SumokuMRVSolver>(p, benchmark);
+            }
+            case SolverType::SumokuOrdering:
+            {
+                spdlog::debug("Using SumokuOrdering");
+                return SolveWith<sumoku::SumokuOrderingSolver>(p, benchmark);
+            }
+            }
+        }(); // "()" invokes lambda
+
+        if (!solved)
         {
-        case SolverType::SumokuSolver:
-        {
-            spdlog::debug("Using SumokuSolver");
-            sumoku::SumokuBacktrackingSolver s {p.N, p.boxes, p.sums};
-            RunSolver(s, p, benchmark);
-            break;
-        }
-        case SolverType::SumokuMRV:
-        {
-            spdlog::debug("Using SumokuMRV");
-            sumoku::SumokuMRVSolver s {p.N, p.boxes, p.sums};
-            RunSolver(s, p, benchmark);
-            break;
-        }
-        case SolverType::SumokuOrdering:
-        {
-            spdlog::debug("Using SumokuOrdering");
-            sumoku::SumokuOrderingSolver s {p.N, p.boxes, p.sums};
-            RunSolver(s, p, benchmark);
-            break;
-        }
+            spdlog::info("Solver could not solve the puzzle.");
+            return EXIT_FAILURE;
         }
     }
 
-    spdlog::info("Application finished successfully");
+    spdlog::info("Application finished successfully.");
 
     return EXIT_SUCCESS;
 }
